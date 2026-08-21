@@ -23,7 +23,7 @@
  *   add-endpoint <id> <url>                 — add a new endpoint, persist
  *   tools                                   — list tools grouped by endpoint
  *   use <id>                                — select an endpoint for this project (next session)
- *   unuse <id>                              — deselect an endpoint for this project (next session)
+ *   unuse <id>|all                          — deselect an endpoint (or every one) for this project
  *   selection                               — show the project selection state
  *
  * Per-project selection: a `.pi/jetbrains.json` file at the process cwd
@@ -474,7 +474,7 @@ export default function jetbrainsMcpExtension(pi: ExtensionAPI) {
 
 	pi.registerCommand("jetbrains", {
 		description:
-			"JetBrains MCP (multi-IDE): status | reconnect [id] | disconnect [id] | set-url <id> <url> | add-endpoint <id> <url> | tools | use <id> | unuse <id> | selection",
+			"JetBrains MCP (multi-IDE): status | reconnect [id] | disconnect [id] | set-url <id> <url> | add-endpoint <id> <url> | tools | use <id> | unuse <id|all> | selection",
 		handler: async (args, ctx) => {
 			const parts = (args || "").trim().split(/\s+/);
 			const sub = (parts[0] || "status").toLowerCase();
@@ -650,9 +650,27 @@ export default function jetbrainsMcpExtension(pi: ExtensionAPI) {
 			if (sub === "use" || sub === "unuse") {
 				const id = parts[1];
 				if (!id) {
-					notify(ctx, `Usage: /jetbrains ${sub} <id>`, "warning");
+					notify(ctx, `Usage: /jetbrains ${sub} <id> | /jetbrains unuse all`, "warning");
 					return;
 				}
+
+				// "unuse all" empties the whole selection so no endpoint is active
+				// for this project — handy when working without any IDE open.
+				if (sub === "unuse" && id.toLowerCase() === "all") {
+					try {
+						saveProjectSelection([]);
+						selection.ids = [];
+						notify(
+							ctx,
+							"Project selection cleared (.pi/jetbrains.json is now empty): no JetBrains endpoint will be active from the next session.",
+							"info",
+						);
+					} catch (err) {
+						notify(ctx, `Could not write .pi/jetbrains.json: ${summarizeError(err)}`, "warning");
+					}
+					return;
+				}
+
 				const currentIds =
 					selection.ids === null ? globalEndpoints.map((e) => e.id) : [...selection.ids];
 				if (sub === "use") {

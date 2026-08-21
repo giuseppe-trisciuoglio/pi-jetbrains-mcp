@@ -3,3 +3,4 @@ config.json
 *.log
 .DS_Store
 .idea/
+.pi/
