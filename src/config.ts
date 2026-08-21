@@ -25,7 +25,7 @@
  * and decide whether to continue with a partial config.
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -129,6 +129,71 @@ function applyEnvOverrides(
 		...endpoints,
 		{ id: "default", url: envUrl, headers: {}, connectTimeoutMs: DEFAULT_CONNECT_TIMEOUT_MS },
 	];
+}
+
+export interface ProjectSelection {
+  /** Selected endpoint ids, or null when no selection file exists (fallback: all). */
+  ids: string[] | null;
+  /** Non-fatal messages (unknown ids, malformed file). */
+  warnings: string[];
+}
+
+const PROJECT_SELECTION_FILENAME = ".pi/jetbrains.json";
+
+/**
+ * Load the per-project endpoint selection from `<cwd>/.pi/jetbrains.json`.
+ * The file holds a whitelist of endpoint ids defined in the global config:
+ *   { "endpoints": ["phpstorm", ...] }
+ * Missing file -> { ids: null } meaning "use all endpoints".
+ * Present file with an empty list -> { ids: [] } meaning "use none".
+ * Unknown or invalid entries are reported as warnings and skipped; they do
+ * not invalidate the remaining ids.
+ */
+export function loadProjectSelection(cwd: string = process.cwd()): ProjectSelection {
+  const warnings: string[] = [];
+  const path = join(cwd, PROJECT_SELECTION_FILENAME);
+  if (!existsSync(path)) return { ids: null, warnings };
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(path, "utf8"));
+  } catch (err) {
+    warnings.push(
+      `${PROJECT_SELECTION_FILENAME} could not be parsed (${summarize(err)}); using all endpoints.`,
+    );
+    return { ids: null, warnings };
+  }
+
+  const raw = (parsed as { endpoints?: unknown } | null)?.endpoints;
+  if (!Array.isArray(raw)) {
+    warnings.push(
+      `${PROJECT_SELECTION_FILENAME} has no 'endpoints' array; using all endpoints.`,
+    );
+    return { ids: null, warnings };
+  }
+
+  const ids: string[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const id = typeof raw[i] === "string" ? raw[i].trim() : "";
+    if (!id) {
+      warnings.push(`${PROJECT_SELECTION_FILENAME}: endpoints[${i}] is not a valid id; skipped.`);
+      continue;
+    }
+    if (ids.includes(id)) {
+      warnings.push(`${PROJECT_SELECTION_FILENAME}: duplicate id '${id}'; skipped.`);
+      continue;
+    }
+    ids.push(id);
+  }
+  return { ids, warnings };
+}
+
+/** Persist the per-project selection file in the given directory. */
+export function saveProjectSelection(ids: string[], cwd: string = process.cwd()): string {
+  const path = join(cwd, PROJECT_SELECTION_FILENAME);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, JSON.stringify({ endpoints: ids }, null, 2) + "\n", "utf8");
+  return path;
 }
 
 export function loadConfig(): LoadedConfig {

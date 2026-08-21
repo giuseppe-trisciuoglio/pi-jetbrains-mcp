@@ -120,6 +120,32 @@ You can configure endpoints entirely through `/jetbrains add-endpoint` and `/jet
 | `headers` | No | Additional HTTP request headers for that endpoint. |
 | `connectTimeoutMs` | No | Connection timeout in milliseconds. Defaults to `10000`. |
 
+### Per-project endpoint selection
+
+By default every configured endpoint is connected and all its tools are registered. To restrict a project to a subset of IDEs, create a `.pi/jetbrains.json` file at the project root listing the endpoint ids to use:
+
+```json
+{
+  "endpoints": ["phpstorm"]
+}
+```
+
+The selection defines the visible perimeter for the whole session: only the selected endpoints are connected and only their tools are registered. The semantics of the file are:
+
+- **File missing** — fallback: all globally configured endpoints are used.
+- **File present with an empty list** — no endpoint is active for that project.
+- **Unknown id in the list** — reported as a warning at boot and skipped; the other ids remain valid.
+
+The file contains only ids, so it is safe to commit to version control; URLs and headers live exclusively in the global `config.json`.
+
+Manage the selection from within a session:
+
+| Command | Effect |
+| --- | --- |
+| `/jetbrains use <id>` | Add the endpoint to the project selection (effective from the next session if not already active). |
+| `/jetbrains unuse <id>` | Remove the endpoint from the project selection. |
+| `/jetbrains selection` | Show the current selection mode and ids. |
+
 ### Environment override
 
 `JETBRAINS_MCP_URL` overrides the endpoint named `default`, or creates it when it does not exist:
@@ -150,6 +176,9 @@ It becomes an `endpoints` array with the identifier `default`.
 | `/jetbrains set-url <id> <url>` | Persist a new endpoint URL, reconnect, and refresh its tools. |
 | `/jetbrains add-endpoint <id> <url>` | Persist a new endpoint, connect to it, and register its tools. |
 | `/jetbrains tools` | List live registered tools grouped by endpoint. |
+| `/jetbrains use <id>` | Add the endpoint to this project's selection (`.pi/jetbrains.json`). |
+| `/jetbrains unuse <id>` | Remove the endpoint from this project's selection. |
+| `/jetbrains selection` | Show the project selection mode and selected ids. |
 
 ## Behavior and limitations
 
