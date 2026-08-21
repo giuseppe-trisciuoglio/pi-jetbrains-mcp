@@ -418,6 +418,24 @@ export default function jetbrainsMcpExtension(pi: ExtensionAPI) {
 
 	// --- Lifecycle -------------------------------------------------------------
 
+	/** Explain why no endpoint is active for this project. */
+	function notifyNoActiveEndpoints(ctx: ExtensionContext): void {
+		if (loaded.errors.length > 0) return;
+		if (selection.ids !== null && selection.ids.length === 0) {
+			notify(
+				ctx,
+				"JetBrains MCP: project selection is empty (.pi/jetbrains.json); no endpoints active for this project.",
+				"warning",
+			);
+		} else if (globalEndpoints.length > 0) {
+			notify(
+				ctx,
+				"JetBrains MCP: no endpoints configured. Edit config.json or /jetbrains add-endpoint <id> <url>.",
+				"warning",
+			);
+		}
+	}
+
 	pi.on("session_start", async (_event, ctx) => {
 		// Surface config diagnostics first so users see migration notices / errors.
 		for (const w of loaded.warnings) notify(ctx, `JetBrains MCP: ${w}`, "info");
@@ -427,21 +445,7 @@ export default function jetbrainsMcpExtension(pi: ExtensionAPI) {
 		setStatus(ctx, buildStatusLine());
 
 		if (clients.size === 0) {
-			if (loaded.errors.length === 0) {
-				if (selection.ids !== null && selection.ids.length === 0) {
-					notify(
-						ctx,
-						"JetBrains MCP: project selection is empty (.pi/jetbrains.json); no endpoints active for this project.",
-						"warning",
-					);
-				} else if (globalEndpoints.length > 0) {
-					notify(
-						ctx,
-						"JetBrains MCP: no endpoints configured. Edit config.json or /jetbrains add-endpoint <id> <url>.",
-						"warning",
-					);
-				}
-			}
+			notifyNoActiveEndpoints(ctx);
 			return;
 		}
 
@@ -686,10 +690,14 @@ export default function jetbrainsMcpExtension(pi: ExtensionAPI) {
 			}
 
 			if (sub === "selection") {
-				const mode =
-					selection.ids === null
-						? "fallback (no .pi/jetbrains.json): all endpoints"
-						: `project file: ${selection.ids.length ? selection.ids.join(", ") : "(empty — no endpoints)"}`;
+				let mode: string;
+				if (selection.ids === null) {
+					mode = "fallback (no .pi/jetbrains.json): all endpoints";
+				} else if (selection.ids.length === 0) {
+					mode = "project file: (empty — no endpoints)";
+				} else {
+					mode = `project file: ${selection.ids.join(", ")}`;
+				}
 				notify(ctx, `JetBrains MCP selection — ${mode}`, "info");
 				return;
 			}
