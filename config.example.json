@@ -1,5 +1,5 @@
 {
-  "_comment": "Copy this file to config.json or use /jetbrains add-endpoint. Each tool is registered as <id>__<tool>, so tools from different IDEs do not collide. Endpoint identifiers must be unique and match /^[a-z][a-z0-9_]*$/.",
+  "_comment": "Copy this file to config.json or use /jetbrains add-endpoint. Each tool is registered as <id>__<tool>, so tools from different IDEs do not collide. Endpoint identifiers must be unique and match /^[a-z][a-z0-9_]*$/. Per project, restrict the active endpoints with a .pi/jetbrains.json file at the project root: { \"endpoints\": [\"phpstorm\"] } (missing file = all endpoints, empty list = none).",
   "endpoints": [
     {
       "id": "phpstorm",

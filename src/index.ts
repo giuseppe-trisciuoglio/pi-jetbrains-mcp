@@ -22,13 +22,24 @@
  *   set-url <id> <url>                      — change URL of one endpoint, persist
  *   add-endpoint <id> <url>                 — add a new endpoint, persist
  *   tools                                   — list tools grouped by endpoint
+ *   use <id>                                — select an endpoint for this project (next session)
+ *   unuse <id>                              — deselect an endpoint for this project (next session)
+ *   selection                               — show the project selection state
+ *
+ * Per-project selection: a `.pi/jetbrains.json` file at the process cwd
+ * holds a whitelist of endpoint ids. Missing file = all endpoints; present
+ * file with an empty list = none. The selection defines the visible
+ * perimeter for the whole session: only selected endpoints are connected
+ * and registered.
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { JetBrainsMcpClient, type McpCallResult, type McpTool } from "./client.ts";
 import {
 	loadConfig,
+	loadProjectSelection,
 	saveEndpoints,
+	saveProjectSelection,
 	type EndpointConfig,
 	type LoadedConfig,
 } from "./config.ts";
@@ -91,6 +102,22 @@ function mapMcpContent(content: unknown): PiContent[] {
 		.filter((x): x is PiContent => x !== null);
 }
 
+/** Filter global endpoints down to the project selection, warning on unknown ids. */
+function resolveSelection(
+	globalEndpoints: EndpointConfig[],
+	selection: { ids: string[] | null; warnings: string[] },
+): EndpointConfig[] {
+	if (selection.ids === null) return globalEndpoints.slice();
+	const byId = new Map(globalEndpoints.map((ep) => [ep.id, ep]));
+	const result: EndpointConfig[] = [];
+	for (const id of selection.ids) {
+		const ep = byId.get(id);
+		if (ep) result.push(ep);
+		else selection.warnings.push(`Project selection references unknown endpoint '${id}'; skipped.`);
+	}
+	return result;
+}
+
 function summarizeError(err: unknown): string {
 	if (err instanceof Error) return err.message;
 	return String(err);
@@ -98,7 +125,11 @@ function summarizeError(err: unknown): string {
 
 export default function jetbrainsMcpExtension(pi: ExtensionAPI) {
 	const loaded: LoadedConfig = loadConfig();
-	const endpoints: EndpointConfig[] = loaded.endpoints.slice();
+	/** Every endpoint known to the global config, regardless of selection. */
+	const globalEndpoints: EndpointConfig[] = loaded.endpoints.slice();
+	/** Endpoints selected for this project — the visible perimeter of the session. */
+	const selection = loadProjectSelection();
+	const endpoints: EndpointConfig[] = resolveSelection(globalEndpoints, selection);
 	const clients = new Map<string, JetBrainsMcpClient>();
 	const connectFailed = new Map<string, boolean>();
 	/** Map toolName -> bookkeeping. Live tools are the ones the IDE currently exposes. */
@@ -377,7 +408,8 @@ export default function jetbrainsMcpExtension(pi: ExtensionAPI) {
 
 	function persistConfig(): void {
 		try {
-			saveEndpoints(endpoints);
+			// Always persist the full global set, not the project-filtered view.
+			saveEndpoints(globalEndpoints);
 		} catch (err) {
 			// Surfacing is the caller's job; here we just don't crash.
 			throw err;
@@ -389,17 +421,26 @@ export default function jetbrainsMcpExtension(pi: ExtensionAPI) {
 	pi.on("session_start", async (_event, ctx) => {
 		// Surface config diagnostics first so users see migration notices / errors.
 		for (const w of loaded.warnings) notify(ctx, `JetBrains MCP: ${w}`, "info");
+		for (const w of selection.warnings) notify(ctx, `JetBrains MCP: ${w}`, "info");
 		for (const e of loaded.errors) notify(ctx, `JetBrains MCP config: ${e}`, "error");
 
 		setStatus(ctx, buildStatusLine());
 
 		if (clients.size === 0) {
 			if (loaded.errors.length === 0) {
-				notify(
-					ctx,
-					"JetBrains MCP: no endpoints configured. Edit config.json or /jetbrains add-endpoint <id> <url>.",
-					"warning",
-				);
+				if (selection.ids !== null && selection.ids.length === 0) {
+					notify(
+						ctx,
+						"JetBrains MCP: project selection is empty (.pi/jetbrains.json); no endpoints active for this project.",
+						"warning",
+					);
+				} else if (globalEndpoints.length > 0) {
+					notify(
+						ctx,
+						"JetBrains MCP: no endpoints configured. Edit config.json or /jetbrains add-endpoint <id> <url>.",
+						"warning",
+					);
+				}
 			}
 			return;
 		}
@@ -429,7 +470,7 @@ export default function jetbrainsMcpExtension(pi: ExtensionAPI) {
 
 	pi.registerCommand("jetbrains", {
 		description:
-			"JetBrains MCP (multi-IDE): status | reconnect [id] | disconnect [id] | set-url <id> <url> | add-endpoint <id> <url> | tools",
+			"JetBrains MCP (multi-IDE): status | reconnect [id] | disconnect [id] | set-url <id> <url> | add-endpoint <id> <url> | tools | use <id> | unuse <id> | selection",
 		handler: async (args, ctx) => {
 			const parts = (args || "").trim().split(/\s+/);
 			const sub = (parts[0] || "status").toLowerCase();
@@ -508,15 +549,16 @@ export default function jetbrainsMcpExtension(pi: ExtensionAPI) {
 					notify(ctx, `Invalid URL: ${url}`, "warning");
 					return;
 				}
-				const epIdx = endpoints.findIndex((e) => e.id === id);
+				const epIdx = globalEndpoints.findIndex((e) => e.id === id);
 				if (epIdx < 0) return;
-				endpoints[epIdx] = { ...endpoints[epIdx], url };
+				// Mutate in place: `endpoints` may alias the same object.
+				Object.assign(globalEndpoints[epIdx], { url });
 				try {
 					persistConfig();
 				} catch (err) {
 					notify(ctx, `Could not save config.json: ${summarizeError(err)}`, "warning");
 				}
-				clients.get(id)!.updateConfig({ url, headers: endpoints[epIdx].headers });
+				clients.get(id)!.updateConfig({ url, headers: globalEndpoints[epIdx].headers });
 				await clients.get(id)!.close();
 				connectFailed.set(id, false);
 				const ok = await ensureConnectedFor(ctx, id);
@@ -563,7 +605,10 @@ export default function jetbrainsMcpExtension(pi: ExtensionAPI) {
 					headers: {},
 					connectTimeoutMs: 10_000,
 				};
-				endpoints.push(ep);
+				globalEndpoints.push(ep);
+				// A newly added endpoint is only active immediately in fallback mode;
+				// with a project selection it must be opted in via /jetbrains use.
+				if (selection.ids === null) endpoints.push(ep);
 				try {
 					persistConfig();
 				} catch (err) {
@@ -582,12 +627,70 @@ export default function jetbrainsMcpExtension(pi: ExtensionAPI) {
 						"warning",
 					);
 				}
+				if (selection.ids !== null) {
+					notify(
+						ctx,
+						`Note: this project has a selection file. Run /jetbrains use ${id} to activate it here.`,
+						"info",
+					);
+				}
 				setStatus(ctx, buildStatusLine());
 				return;
 			}
 
 			if (sub === "tools") {
 				notify(ctx, formatToolsByEndpoint(), "info");
+				return;
+			}
+
+			if (sub === "use" || sub === "unuse") {
+				const id = parts[1];
+				if (!id) {
+					notify(ctx, `Usage: /jetbrains ${sub} <id>`, "warning");
+					return;
+				}
+				const currentIds =
+					selection.ids === null ? globalEndpoints.map((e) => e.id) : [...selection.ids];
+				if (sub === "use") {
+					if (!globalEndpoints.some((e) => e.id === id)) {
+						notify(
+							ctx,
+							`Unknown endpoint '${id}'. Known: ${globalEndpoints.map((e) => e.id).join(", ") || "(none)"}. Add it first with /jetbrains add-endpoint.`,
+							"warning",
+						);
+						return;
+					}
+					if (!currentIds.includes(id)) currentIds.push(id);
+				} else {
+					if (!currentIds.includes(id)) {
+						notify(ctx, `Endpoint '${id}' is not selected for this project.`, "warning");
+						return;
+					}
+					currentIds.splice(currentIds.indexOf(id), 1);
+				}
+				try {
+					saveProjectSelection(currentIds);
+					selection.ids = currentIds;
+					notify(
+						ctx,
+						`Project selection updated (${sub === "use" ? "+" : "-"}${id}). ` +
+							(sub === "use" && !endpoints.some((e) => e.id === id)
+								? "It will be active from the next session."
+								: "Already active in this session."),
+						"info",
+					);
+				} catch (err) {
+					notify(ctx, `Could not write .pi/jetbrains.json: ${summarizeError(err)}`, "warning");
+				}
+				return;
+			}
+
+			if (sub === "selection") {
+				const mode =
+					selection.ids === null
+						? "fallback (no .pi/jetbrains.json): all endpoints"
+						: `project file: ${selection.ids.length ? selection.ids.join(", ") : "(empty — no endpoints)"}`;
+				notify(ctx, `JetBrains MCP selection — ${mode}`, "info");
 				return;
 			}
 

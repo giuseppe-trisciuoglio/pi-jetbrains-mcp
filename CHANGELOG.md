@@ -6,6 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- Per-project endpoint selection via a `.pi/jetbrains.json` file at the project root: a whitelist of endpoint ids. Missing file falls back to all endpoints; an empty list activates none.
+- `/jetbrains use <id>`, `/jetbrains unuse <id>`, and `/jetbrains selection` commands to manage the per-project selection.
+
 ## [1.0.0] - 2026-07-25
 
 ### Added
