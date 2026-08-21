@@ -1,0 +1,33 @@
+# Dependabot configuration.
+# Keeps npm dependencies and GitHub Actions up to date; security updates
+# are opened as separate PRs regardless of the schedule below.
+
+version: 2
+
+updates:
+  # npm dependencies (dependencies + devDependencies).
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      # Group minor/patch updates into a single PR to reduce noise;
+      # major bumps stay in individual PRs for easier review.
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # Runtime dependency of the extension: only major-bump when pi itself
+      # releases a breaking change we adopt deliberately.
+      - dependency-name: "@earendil-works/pi-coding-agent"
+        update-types: ["version-update:semver-major"]
+
+  # GitHub Actions used in workflows (also fixes Node 20 deprecation
+  # warnings by moving to action versions running on Node 24).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
