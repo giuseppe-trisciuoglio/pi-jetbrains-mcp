@@ -1,6 +1,6 @@
 {
   "name": "@giuseppe.trisciuoglio/pi-jetbrains-mcp",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Expose JetBrains IDE MCP Server tools as native pi tools across multiple IDEs.",
   "keywords": [
     "pi-package",

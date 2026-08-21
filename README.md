@@ -47,7 +47,7 @@ pi install npm:@giuseppe.trisciuoglio/pi-jetbrains-mcp
 ### From GitHub
 
 ```bash
-pi install git:github.com/giuseppe-trisciuoglio/pi-jetbrains-mcp@v1.0.0
+pi install git:github.com/giuseppe-trisciuoglio/pi-jetbrains-mcp@v1.1.0
 ```
 
 Restart pi or run `/reload` after installation. The package is installed globally by default. Add `-l` to install it only for the current project.
