@@ -13,6 +13,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+
+- `/jetbrains unuse all` empties the whole per-project selection in one step, so no JetBrains endpoint is active for the project when no IDE connection is needed.
+
 ## [1.0.0] - 2026-07-25
 
 ### Added

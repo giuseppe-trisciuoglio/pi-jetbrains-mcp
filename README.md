@@ -144,6 +144,7 @@ Manage the selection from within a session:
 | --- | --- |
 | `/jetbrains use <id>` | Add the endpoint to the project selection (effective from the next session if not already active). |
 | `/jetbrains unuse <id>` | Remove the endpoint from the project selection. |
+| `/jetbrains unuse all` | Empty the whole project selection: no JetBrains endpoint will be active from the next session. |
 | `/jetbrains selection` | Show the current selection mode and ids. |
 
 ### Environment override
@@ -178,6 +179,7 @@ It becomes an `endpoints` array with the identifier `default`.
 | `/jetbrains tools` | List live registered tools grouped by endpoint. |
 | `/jetbrains use <id>` | Add the endpoint to this project's selection (`.pi/jetbrains.json`). |
 | `/jetbrains unuse <id>` | Remove the endpoint from this project's selection. |
+| `/jetbrains unuse all` | Empty this project's selection: no endpoint active from the next session. |
 | `/jetbrains selection` | Show the project selection mode and selected ids. |
 
 ## Behavior and limitations
